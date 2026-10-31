@@ -58,6 +58,12 @@ jobs:
           triplet: x64-windows-release
           token: ${{ github.token }}
 
+      - name: Show what vcpkg installed
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse "$env:VCPKG_ROOT\lib", "$env:VCPKG_ROOT\bin" | Select-Object FullName
+
       - name: Run Tests
         if: runner.os != 'Windows'
         run: nim c -r c/tzlib.nim
