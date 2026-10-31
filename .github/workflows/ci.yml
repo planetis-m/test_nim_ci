@@ -1,0 +1,45 @@
+# Cross-platform CI for a Nim project.
+#
+# Adapt the following placeholders to your project:
+#   src/main.nim    – entry point passed to `nim c`
+#   stable     – `stable`, a series such as `2.2.x`, or an exact version
+#
+# C dependencies (apt, Homebrew, vcpkg) are in c_dependencies.md.
+
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Nim
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: stable
+          repo-token: ${{ github.token }}
+
+      - name: Install Atlas via Nimble
+        run: nimble install -y "https://github.com/nim-lang/atlas@#head"
+
+      - name: Install Nim dependencies
+        run: atlas install
+
+      - name: Build
+        run: nim c -d:release src/main.nim
+
+      - name: Run Tests
+        run: nim c -r tests/tester.nim

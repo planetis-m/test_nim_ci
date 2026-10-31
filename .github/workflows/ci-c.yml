@@ -1,0 +1,70 @@
+# Cross-platform CI for a Nim project.
+#
+# Adapt the following placeholders to your project:
+#   src/main.nim    – entry point passed to `nim c`
+#   stable     – `stable`, a series such as `2.2.x`, or an exact version
+#
+# C dependencies (apt, Homebrew, vcpkg) are in c_dependencies.md.
+
+name: CI with C dependency
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}\vcpkg\installed\x64-windows-release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Nim
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: stable
+          repo-token: ${{ github.token }}
+
+      - name: Install Atlas via Nimble
+        run: nimble install -y "https://github.com/nim-lang/atlas@#head"
+
+      - name: Install Nim dependencies
+        run: atlas install
+
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev
+
+      - name: Install system dependencies
+        if: runner.os == 'macOS'
+        run: brew install zlib
+
+      - name: Install system dependencies (vcpkg)
+        if: runner.os == 'Windows'
+        uses: johnwason/vcpkg-action@v8
+        with:
+          pkgs: zlib
+          triplet: x64-windows-release
+          token: ${{ github.token }}
+
+      - name: Run Tests
+        if: runner.os != 'Windows'
+        run: nim c -r c/tzlib.nim
+
+      - name: Run Tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:VCPKG_ROOT\bin;" + $env:PATH
+          nim c -r c/tzlib.nim

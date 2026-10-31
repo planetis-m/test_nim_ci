@@ -1,0 +1,13 @@
+nimcache/
+main
+main.exe
+test_ci
+test_ci.exe
+dist/
+tests/t*
+!tests/*.nim
+!tests/config.nims
+c/tzlib
+deps/
+nim.cfg
+atlas.config

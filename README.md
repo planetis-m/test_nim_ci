@@ -1,0 +1,1 @@
+Throwaway project that runs the `nim-ci-release` workflows on real GitHub runners. `ci.yml` and `release.yml` are the skill's workflows with placeholders filled in. `ci-c.yml` applies the steps from its C dependency reference to a zlib binding.

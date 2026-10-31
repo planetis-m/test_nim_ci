@@ -1,0 +1,184 @@
+# Cross-platform release build for a Nim project.
+#
+# Adapt the following placeholders to your project:
+#   test_ci         – your binary name (used for output and archive naming)
+#   src/main.nim    – entry point passed to `nim c`
+#   stable     – `stable`, a series such as `2.2.x`, or an exact version
+#   <dist-files>      – extra files to include in the release archive (README, config, etc.)
+#
+# C dependencies (apt, Homebrew, vcpkg, DLLs in the archive) are in c_dependencies.md.
+
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+env:
+  VERSION: ${{ github.ref_name }}
+
+jobs:
+  build-linux:
+    name: Build Linux (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Nim
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: stable
+          repo-token: ${{ github.token }}
+
+      - name: Install Atlas via Nimble
+        run: nimble install -y "https://github.com/nim-lang/atlas@#head"
+
+      - name: Install Nim dependencies
+        run: atlas install
+
+      - name: Build release binary
+        run: nim c -d:release -o:test_ci src/main.nim
+
+      - name: Strip executable
+        run: strip test_ci
+
+      - name: Create archive
+        run: |
+          mkdir -p dist
+          cp test_ci dist/
+          # cp <dist-files> dist/
+          tar -czf test_ci-linux-x86_64.tar.gz -C dist .
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: test_ci-linux-x86_64-${{ env.VERSION }}
+          path: test_ci-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS (arm64)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Nim
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: stable
+          repo-token: ${{ github.token }}
+
+      - name: Install Atlas via Nimble
+        run: nimble install -y "https://github.com/nim-lang/atlas@#head"
+
+      - name: Install Nim dependencies
+        run: atlas install
+
+      - name: Build release binary
+        run: nim c -d:release -o:test_ci src/main.nim
+
+      - name: Create archive
+        run: |
+          mkdir -p dist
+          cp test_ci dist/
+          # cp <dist-files> dist/
+          tar -czf test_ci-macos-arm64.tar.gz -C dist .
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: test_ci-macos-arm64-${{ env.VERSION }}
+          path: test_ci-macos-arm64.tar.gz
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows (x86_64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Nim
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: stable
+          repo-token: ${{ github.token }}
+
+      - name: Install Atlas via Nimble
+        run: nimble install -y "https://github.com/nim-lang/atlas@#head"
+
+      - name: Install Nim dependencies
+        run: atlas install
+
+      - name: Build release binary
+        run: nim c -d:release -o:test_ci.exe src/main.nim
+
+      - name: Create archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item test_ci.exe dist/
+          # Copy-Item <dist-files> dist/
+          Compress-Archive -Path dist\* -DestinationPath test_ci-windows-x86_64.zip -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: test_ci-windows-x86_64-${{ env.VERSION }}
+          path: test_ci-windows-x86_64.zip
+          if-no-files-found: error
+
+  create-release:
+    name: Create Release
+    needs:
+      - build-linux
+      - build-macos
+      - build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Gather release files
+        run: |
+          mkdir -p artifacts/release
+          find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" \) -exec cp {} artifacts/release/ \;
+          ls -la artifacts/release/
+
+      - name: Create release notes
+        run: |
+          cat > release-notes.md << EOF
+          ## Release ${{ env.VERSION }}
+
+          Prebuilt binaries for:
+
+          - Linux x86_64: test_ci-linux-x86_64.tar.gz
+          - macOS arm64: test_ci-macos-arm64.tar.gz
+          - Windows x86_64: test_ci-windows-x86_64.zip
+
+          Each archive includes the test_ci executable.
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
+          body_path: release-notes.md
+          files: artifacts/release/*
+          draft: true
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
